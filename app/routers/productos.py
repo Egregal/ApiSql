@@ -1,17 +1,23 @@
-from fastapi import APIRouter, HTTPException,Depends
+from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import select
 from database.model import Productos
-from models.producto import ProductoBase
+from models.producto import ProductoBase, ProductoUpdate
 from database.connect import SessionDep
 from typing import Annotated
 from fastapi.security import OAuth2PasswordBearer
-
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
 routes = APIRouter(prefix="/productos", tags=["productos"])
+
+
+async def get_producto_or_404(producto_id: int, sesion: SessionDep) -> Productos:
+    producto = sesion.get(Productos, producto_id)
+    if not producto:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    return producto
 
 
 @routes.get("")
@@ -36,42 +42,41 @@ async def filtro_datos(sesion: SessionDep, nombre: str):
 
 
 @routes.post("/crear")
-async def crear_datos(producto: Productos, sesion: SessionDep):
+async def crear_datos(producto: ProductoBase, sesion: SessionDep):
     """
     Crea un nuevo producto en la bbdd.
 
     """
-    nuevo_producto = Productos(**producto.model_dump())
+    nuevo_producto = Productos.model_validate(producto)
     sesion.add(nuevo_producto)
     sesion.commit()
     sesion.refresh(nuevo_producto)
     return nuevo_producto
 
 
-@routes.put("/actualizar/{producto_id}")
-async def actualiza_datos(producto_id: int, producto: ProductoBase, sesion: SessionDep):
-    db_producto = sesion.get(Productos, producto_id)
-    if not db_producto:
-        raise HTTPException(status_code=404, detail="Producto no encontrado")
+@routes.put("/actualizar/{producto_name}")
+async def actualiza_datos(
+    producto: ProductoUpdate,
+    sesion: SessionDep,
+
+    db_producto: Annotated[Productos, Depends(get_producto_or_404)],
+):
     producto_data = producto.model_dump(exclude_unset=True)
     for key, value in producto_data.items():
         setattr(db_producto, key, value)
-        sesion.add(db_producto)
-        sesion.commit()
-        sesion.refresh(db_producto)
-        return db_producto
+    sesion.add(db_producto)
+    sesion.commit()
+    sesion.refresh(db_producto)
+    return db_producto
 
 
 @routes.delete("/borrar/{producto_id}")
-
-async def read_items(token: Annotated[str, Depends(oauth2_scheme)]):
-    return {"token": token}
-
-async def borra_datos(producto_id: int, sesion: SessionDep):
-    producto = sesion.get(Productos, producto_id)
-    if not producto:
-        raise HTTPException(status_code=404, detail="Producto no encontrado")
-    sesion.delete(producto)
+async def borra_datos(
+    sesion: SessionDep,
+    db_producto: Annotated[Productos, Depends(get_producto_or_404)],
+    token: Annotated[str, Depends(oauth2_scheme)],
+):
+    sesion.delete(db_producto)
     sesion.commit()
     return {"message": "Producto borrado"}
 

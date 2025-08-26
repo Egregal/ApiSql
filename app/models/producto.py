@@ -4,8 +4,11 @@ from sqlmodel import Field
 
 
 class ProductoBase(BaseModel):
-    id: int | None
     nombre: str
-    precio: int | None
+    precio: float | None
     descripcion: str
+
+class ProductoUpdate(BaseModel):
+    id: int
+    nombre:str
 
